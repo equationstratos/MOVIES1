@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Films cultes</title>
+<style>
+  :root {
+    --bg: #0d0e12;
+    --surface: #16181f;
+    --surface-2: #1d2029;
+    --text: #ecebe6;
+    --muted: #9a9ca6;
+    --line: #2a2d38;
+    --accent: #e8b04a;
+    --c1a: #7a1f2b; --c1b: #2b0f14;
+    --c2a: #1f4f7a; --c2b: #0c1a2b;
+    --c3a: #7a5a1f; --c3b: #2b1f0c;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px; }
+
+  header.hero {
+    padding: 48px 0 28px;
+    border-bottom: 1px solid var(--line);
+    background: radial-gradient(ellipse at 20% 0%, rgba(232,176,74,.14), transparent 60%);
+  }
+  .kicker { color: var(--accent); font-size: 12px; letter-spacing: .18em; text-transform: uppercase; font-weight: 600; }
+  h1 { font-size: clamp(34px, 7vw, 60px); line-height: 1.02; letter-spacing: -.02em; margin: 10px 0 0; font-weight: 800; }
+
+  .keybar { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .keybar input {
+    flex: 1 1 260px; min-width: 0;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--line); border-radius: 10px;
+    padding: 9px 12px; font-size: 14px; outline: none;
+  }
+  .keybar input:focus { border-color: var(--accent); }
+  .keybar button, .chip {
+    background: var(--surface); color: var(--muted);
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 8px 14px; font-size: 13px; cursor: pointer; font-weight: 600;
+  }
+  .keybar button.primary { background: var(--accent); color: #1a1408; border-color: var(--accent); }
+  .keybar .hint { width: 100%; color: var(--muted); font-size: 13px; }
+  .keybar .hint a { color: var(--accent); }
+
+  .controls {
+    position: sticky; top: 0; z-index: 5;
+    background: rgba(13,14,18,.92);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+    padding: 12px 0;
+  }
+  .controls .wrap { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  input[type=search] {
+    flex: 1 1 220px; min-width: 0;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 12px; font-size: 15px; outline: none;
+  }
+  input[type=search]:focus { border-color: var(--accent); }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip[aria-pressed=true] { background: var(--accent); color: #1a1408; border-color: var(--accent); }
+  .count { color: var(--muted); font-size: 13px; width: 100%; }
+
+  section.genre { padding: 32px 0 8px; }
+  section.genre h2 {
+    font-size: 13px; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--muted); font-weight: 700; margin-bottom: 16px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  section.genre h2::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 18px; }
+  @media (max-width: 420px) { .grid { grid-template-columns: repeat(2, 1fr); gap: 12px; } }
+
+  .card { display: flex; flex-direction: column; gap: 8px; text-decoration: none; }
+  .poster {
+    position: relative; aspect-ratio: 2 / 3; border-radius: 12px; overflow: hidden;
+    border: 1px solid var(--line);
+    transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+    display: flex; flex-direction: column; justify-content: space-between; padding: 12px;
+  }
+  .card:hover .poster { transform: translateY(-3px); border-color: var(--accent); box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+  .poster.s1 { background: linear-gradient(160deg, var(--c1a), var(--c1b)); }
+  .poster.s2 { background: linear-gradient(160deg, var(--c2a), var(--c2b)); }
+  .poster.s3 { background: linear-gradient(160deg, var(--c3a), var(--c3b)); }
+  .poster .ph-title { font-weight: 800; font-size: 17px; line-height: 1.15; }
+  .poster .ph-year { font-size: 34px; font-weight: 800; color: rgba(255,255,255,.85); letter-spacing: -.03em; }
+  .poster img {
+    position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+    opacity: 0; transition: opacity .3s ease;
+  }
+  .poster img.loaded { opacity: 1; }
+  .card h3 { font-size: 15px; line-height: 1.25; font-weight: 700; }
+  .meta { font-size: 12px; color: var(--muted); }
+  .meta b { color: var(--accent); font-weight: 600; }
+  .synopsis { font-size: 13px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+  .empty { color: var(--muted); padding: 40px 0; text-align: center; display: none; }
+  footer { color: var(--muted); font-size: 13px; padding: 40px 0 56px; border-top: 1px solid var(--line); margin-top: 32px; }
+  footer p + p { margin-top: 6px; }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="kicker">32 films · Classiques &amp; sagas</div>
+    <h1>Films cultes</h1>
+    <form class="keybar" id="keyform">
+      <input id="key" type="password" autocomplete="off" placeholder="Clé API TMDB (v3) ou jeton d'accès (v4)" aria-label="Clé API TMDB">
+      <button class="primary" type="submit">Charger les affiches</button>
+      <button type="button" id="forget">Oublier la clé</button>
+      <p class="hint" id="hint">Les affiches viennent de TMDB. Colle ta clé gratuite (<a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener">themoviedb.org/settings/api</a>) : elle reste uniquement dans ce navigateur.</p>
+    </form>
+  </div>
+</header>
+
+<div class="controls">
+  <div class="wrap">
+    <input type="search" id="q" placeholder="Rechercher un film, une année, un genre…" aria-label="Rechercher">
+    <div class="chips" id="chips"></div>
+    <div class="count" id="count"></div>
+  </div>
+</div>
+
+<main class="wrap" id="main"></main>
+<p class="empty wrap" id="empty">Aucun film ne correspond à ta recherche.</p>
+
+<footer class="wrap">
+  <p>« Blade Runner 2045 » a été interprété comme Blade Runner 2049. Pour Mad Max, la sélection comprend Fury Road et Furiosa.</p>
+  <p>Affiches et fiches : The Movie Database (TMDB). Ce produit utilise l'API TMDB sans être approuvé ni certifié par TMDB.</p>
+</footer>
+
+<script>
+const SECTIONS = [
+  { id: "s1", name: "Policier, thriller & drame", films: [
+    ["Heat", 1995, "Policier · Thriller", "Un braqueur professionnel et un inspecteur obstiné s’affrontent dans un duel tendu à Los Angeles.", "tt0113277"],
+    ["Pulp Fiction", 1994, "Policier · Culte", "Des histoires de gangsters, de tueurs à gages et de petits criminels s’entrecroisent dans un récit non linéaire.", "tt0110912"],
+    ["Les Évadés", 1994, "Drame · Espoir", "Un banquier condamné à tort tente de préserver son espoir et sa dignité derrière les murs d’une prison.", "tt0111161"],
+    ["Usual Suspects", 1995, "Policier · Mystère", "Un interrogatoire révèle peu à peu les coulisses d’un braquage et l’identité d’un mystérieux criminel.", "tt0114814"],
+    ["Forrest Gump", 1994, "Comédie dramatique", "Un homme au grand cœur traverse plusieurs décennies de l’histoire américaine et vit une existence extraordinaire.", "tt0109830"],
+    ["Fight Club", 1999, "Thriller psychologique", "Un homme insatisfait de sa vie rencontre Tyler Durden et découvre un club de combat clandestin qui lui échappe.", "tt0137523"],
+    ["Equalizer", 2014, "Action · Vengeance", "Un ancien agent aux compétences redoutables intervient pour défendre des personnes victimes d’injustice.", "tt0455944"],
+    ["Equalizer 2", 2018, "Action · Thriller", "Robert McCall reprend du service après le meurtre d’une personne qui lui était chère.", "tt3766354"],
+    ["Equalizer 3", 2023, "Action · Thriller", "Installé dans le sud de l’Italie, McCall découvre une communauté terrorisée par la mafia locale.", "tt17024450"],
+    ["Sicario", 2015, "Thriller · Cartels", "Une agente du FBI rejoint une opération clandestine contre les cartels mexicains et découvre les zones grises de cette guerre.", "tt3397884"],
+    ["Sicario : La Guerre des cartels", 2018, "Thriller · Action", "Une opération secrète contre les cartels dégénère au milieu de manipulations politiques et militaires.", "tt5052474"]
+  ]},
+  { id: "s2", name: "Science-fiction & dystopie", films: [
+    ["Matrix", 1999, "Science-fiction · Action", "Un hacker découvre que la réalité quotidienne est une simulation contrôlée par des machines.", "tt0133093"],
+    ["Matrix Reloaded", 2003, "Science-fiction · Action", "Neo et ses alliés cherchent à protéger Zion tandis que la guerre contre les machines s’intensifie.", "tt0234215"],
+    ["Matrix Revolutions", 2003, "Science-fiction · Action", "La bataille finale pour l’avenir de l’humanité approche, tandis que Neo tente de mettre fin au conflit.", "tt0242653"],
+    ["V pour Vendetta", 2005, "Dystopie · Action", "Un justicier masqué encourage la population à se soulever contre un régime totalitaire.", "tt0434409"],
+    ["Inception", 2010, "Science-fiction · Thriller", "Une équipe spécialisée dans les rêves doit implanter une idée dans l’esprit d’une cible.", "tt1375666"],
+    ["Blade Runner 2049", 2017, "Science-fiction · Cyberpunk", "Un policier chargé de traquer des androïdes découvre un secret susceptible de bouleverser l’ordre établi.", "tt1856101"],
+    ["The Creator", 2023, "Science-fiction · IA", "Dans une guerre entre l’humanité et l’intelligence artificielle, un ancien soldat reçoit une mission qui remet ses convictions en question.", "tt11858890"],
+    ["Le Cinquième Élément", 1997, "Science-fiction · Aventure", "Dans un futur extravagant, un ancien militaire doit réunir les éléments nécessaires pour sauver l’humanité.", "tt0119116"],
+    ["Predator: Badlands", 2025, "Science-fiction · Action", "Un jeune Predator rejeté par les siens part sur une planète dangereuse pour prouver sa valeur.", "tt31227572"],
+    ["New York 1997", 1981, "Action · Science-fiction", "Dans un futur proche, Manhattan est devenue une immense prison fortifiée. Un ancien soldat doit y retrouver le président disparu.", "tt0082340"],
+    ["Los Angeles 2013", 1996, "Action · Science-fiction", "Snake Plissken est envoyé dans un Los Angeles isolé après un séisme, devenu une ville-prison dirigée par un régime autoritaire.", "tt0116225"]
+  ]},
+  { id: "s3", name: "Action, guerre & aventure", films: [
+    ["Inglourious Basterds", 2009, "Guerre · Uchronie", "Dans une Seconde Guerre mondiale réinventée, plusieurs personnages préparent une opération contre les dirigeants nazis.", "tt0361748"],
+    ["Kill Bill : Volume 1", 2003, "Action · Arts martiaux", "Une tueuse sort du coma et entreprend de se venger de ceux qui ont tenté de la tuer.", "tt0266697"],
+    ["Kill Bill : Volume 2", 2004, "Action · Vengeance", "La quête de la Mariée se poursuit jusqu’à son affrontement final avec Bill.", "tt0378194"],
+    ["Top Gun", 1986, "Action · Aviation", "Maverick, pilote de chasse talentueux et téméraire, intègre une école d’élite de l’aéronavale américaine.", "tt0092099"],
+    ["Top Gun: Maverick", 2022, "Action · Aviation", "Maverick prépare une nouvelle génération de pilotes pour une mission aérienne presque impossible.", "tt1745960"],
+    ["Fury", 2014, "Guerre · Drame", "En 1945, l’équipage d’un char américain affronte les forces allemandes au cours des derniers combats en Europe.", "tt2713180"],
+    ["Dune", 2021, "Science-fiction · Épique", "Paul Atréides découvre son destin sur Arrakis, planète désertique au cœur d’une lutte pour une ressource précieuse.", "tt1160419"],
+    ["Dune : Deuxième partie", 2024, "Science-fiction · Épique", "Paul rejoint les Fremen et s’engage dans une guerre qui pourrait changer le destin de l’univers.", "tt15239678"],
+    ["Mad Max: Fury Road", 2015, "Action · Post-apocalyptique", "Dans un désert dévasté, Max et Furiosa tentent d’échapper à un tyran lors d’une course-poursuite explosive.", "tt1392190"],
+    ["Furiosa : Une saga Mad Max", 2024, "Action · Post-apocalyptique", "Enlevée enfant, Furiosa grandit dans un monde brutal et cherche à retrouver le chemin de son foyer.", "tt12037194"]
+  ]}
+];
+
+const IMG = "https://image.tmdb.org/t/p/w500";
+const KEY_STORE = "tmdb-key";
+const CACHE_STORE = "tmdb-posters-v1";
+
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+  del(k) { try { localStorage.removeItem(k); } catch {} }
+};
+let cache = {};
+try { cache = JSON.parse(store.get(CACHE_STORE) || "{}"); } catch { cache = {}; }
+
+const main = document.getElementById("main");
+const chipsEl = document.getElementById("chips");
+const q = document.getElementById("q");
+const countEl = document.getElementById("count");
+const emptyEl = document.getElementById("empty");
+const hintEl = document.getElementById("hint");
+const keyInput = document.getElementById("key");
+let active = "all";
+
+const norm = s => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+const cards = {};
+SECTIONS.forEach(sec => {
+  const el = document.createElement("section");
+  el.className = "genre";
+  el.dataset.sec = sec.id;
+  el.innerHTML = `<h2>${esc(sec.name)}</h2><div class="grid"></div>`;
+  const grid = el.querySelector(".grid");
+  sec.films.forEach(([title, year, tags, syn, imdb]) => {
+    const card = document.createElement("a");
+    card.className = "card";
+    card.href = `https://www.imdb.com/title/${imdb}/`;
+    card.target = "_blank";
+    card.rel = "noopener";
+    card.dataset.search = norm(`${title} ${year} ${tags} ${syn}`);
+    card.innerHTML = `
+      <div class="poster ${sec.id}">
+        <span class="ph-title">${esc(title)}</span>
+        <span class="ph-year">${year}</span>
+      </div>
+      <div>
+        <h3>${esc(title)}</h3>
+        <div class="meta"><b>${year}</b> · ${esc(tags)}</div>
+      </div>
+      <p class="synopsis">${esc(syn)}</p>`;
+    grid.appendChild(card);
+    cards[imdb] = card;
+    if (cache[imdb]) applyPoster(imdb, cache[imdb]);
+  });
+  main.appendChild(el);
+});
+
+function applyPoster(imdb, info) {
+  const card = cards[imdb];
+  if (!card || !info) return;
+  if (info.id) card.href = `https://www.themoviedb.org/movie/${info.id}`;
+  if (!info.poster) return;
+  const box = card.querySelector(".poster");
+  let img = box.querySelector("img");
+  if (!img) {
+    img = document.createElement("img");
+    img.alt = `Affiche : ${card.querySelector("h3").textContent}`;
+    img.loading = "lazy";
+    img.onload = () => img.classList.add("loaded");
+    box.appendChild(img);
+  }
+  img.src = IMG + info.poster;
+}
+
+async function lookup(imdb, key) {
+  const bearer = key.length > 40;
+  const url = `https://api.themoviedb.org/3/find/${imdb}?external_source=imdb_id&language=fr-FR` + (bearer ? "" : `&api_key=${encodeURIComponent(key)}`);
+  const res = await fetch(url, bearer ? { headers: { Authorization: `Bearer ${key}` } } : {});
+  if (res.status === 401) throw new Error("auth");
+  if (!res.ok) throw new Error("http");
+  const m = (await res.json()).movie_results?.[0];
+  return m ? { id: m.id, poster: m.poster_path } : null;
+}
+
+async function loadPosters(key, force) {
+  const ids = Object.keys(cards).filter(id => force || !cache[id]?.poster);
+  if (!ids.length) { hintEl.textContent = "Toutes les affiches sont chargées."; return; }
+  hintEl.textContent = `Chargement des affiches… (0/${ids.length})`;
+  let done = 0, missing = 0;
+  try {
+    for (let i = 0; i < ids.length; i += 8) {
+      await Promise.all(ids.slice(i, i + 8).map(async id => {
+        const info = await lookup(id, key);
+        if (info) { cache[id] = info; applyPoster(id, info); } else missing++;
+        hintEl.textContent = `Chargement des affiches… (${++done}/${ids.length})`;
+      }));
+    }
+    store.set(CACHE_STORE, JSON.stringify(cache));
+    hintEl.textContent = missing ? `Affiches chargées (${missing} introuvable${missing > 1 ? "s" : ""} sur TMDB).` : "Affiches chargées depuis TMDB.";
+  } catch (e) {
+    store.set(CACHE_STORE, JSON.stringify(cache));
+    hintEl.textContent = e.message === "auth" ? "Clé TMDB refusée : vérifie-la et réessaie." : "Impossible de joindre TMDB pour le moment. Réessaie plus tard.";
+  }
+}
+
+document.getElementById("keyform").addEventListener("submit", e => {
+  e.preventDefault();
+  const key = keyInput.value.trim() || store.get(KEY_STORE);
+  if (!key) { keyInput.focus(); return; }
+  store.set(KEY_STORE, key);
+  keyInput.value = "";
+  keyInput.placeholder = "Clé enregistrée dans ce navigateur";
+  loadPosters(key, true);
+});
+document.getElementById("forget").onclick = () => {
+  store.del(KEY_STORE);
+  keyInput.placeholder = "Clé API TMDB (v3) ou jeton d'accès (v4)";
+  hintEl.textContent = "Clé supprimée. Les affiches déjà chargées restent en cache.";
+};
+
+const savedKey = store.get(KEY_STORE);
+if (savedKey) { keyInput.placeholder = "Clé enregistrée dans ce navigateur"; loadPosters(savedKey, false); }
+
+const chipDefs = [{ id: "all", name: "Tous" }, { id: "s1", name: "Policier & drame" }, { id: "s2", name: "SF & dystopie" }, { id: "s3", name: "Action & guerre" }];
+chipDefs.forEach(c => {
+  const b = document.createElement("button");
+  b.className = "chip";
+  b.textContent = c.name;
+  b.setAttribute("aria-pressed", c.id === active);
+  b.onclick = () => {
+    active = c.id;
+    chipsEl.querySelectorAll(".chip").forEach(x => x.setAttribute("aria-pressed", x === b));
+    filter();
+  };
+  chipsEl.appendChild(b);
+});
+
+function filter() {
+  const term = norm(q.value.trim());
+  let shown = 0;
+  document.querySelectorAll("section.genre").forEach(sec => {
+    const secOk = active === "all" || sec.dataset.sec === active;
+    let inSec = 0;
+    sec.querySelectorAll(".card").forEach(card => {
+      const ok = secOk && (!term || card.dataset.search.includes(term));
+      card.style.display = ok ? "" : "none";
+      if (ok) inSec++;
+    });
+    sec.style.display = inSec ? "" : "none";
+    shown += inSec;
+  });
+  countEl.textContent = `${shown} film${shown > 1 ? "s" : ""} affiché${shown > 1 ? "s" : ""}`;
+  emptyEl.style.display = shown ? "none" : "block";
+}
+q.addEventListener("input", filter);
+filter();
+</script>
+</body>
+</html>

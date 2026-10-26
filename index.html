@@ -217,7 +217,7 @@ try { cache = JSON.parse(store.get(CACHE_STORE) || "{}"); } catch { cache = {}; 
 // Liste commune vu / coup de cœur / commentaire, partagée via Supabase (voir supabase.sql).
 // Sans configuration, elle reste enregistrée dans ce navigateur seulement.
 const SUPABASE_URL = "";
-const SUPABASE_ANON_KEY = "";
+const SUPABASE_ANON_KEY = "sb_publishable_dfLENy0ttHh99UbyQtUd8w_bIfZaVSl";
 const REMOTE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
 
 const MARKS_STORE = "films-avis-v1";
@@ -228,7 +228,8 @@ const saveLocal = () => store.set(MARKS_STORE, JSON.stringify(marks));
 
 const api = (path, opts = {}) => fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
   ...opts,
-  headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json", ...opts.headers }
+  // Les clés « sb_publishable_… » vont seulement dans apikey ; les anciennes clés anon (JWT) aussi en Bearer
+  headers: { apikey: SUPABASE_ANON_KEY, ...(SUPABASE_ANON_KEY.startsWith("eyJ") ? { Authorization: `Bearer ${SUPABASE_ANON_KEY}` } : {}), "Content-Type": "application/json", ...opts.headers }
 });
 
 const pending = {};

@@ -246,9 +246,9 @@ function saveMark(id, delay = 0) {
         headers: { Prefer: "resolution=merge-duplicates" },
         body: JSON.stringify([{ imdb_id: id, seen: m.seen, liked: m.liked, note: m.note, seen_at: m.seen_at, liked_at: m.liked_at, updated_at: new Date().toISOString() }])
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) throw new Error(await errorText(res));
       setSync("Liste commune à jour.");
-    } catch { setSync("Échec de l’enregistrement en ligne. Vérifie ta connexion puis réessaie."); }
+    } catch (e) { setSync(`Échec de l’enregistrement en ligne (${e instanceof TypeError || !e.message ? "pas de réponse de Supabase" : e.message}).`); }
   }, delay);
 }
 
@@ -256,7 +256,7 @@ async function pullMarks() {
   if (!REMOTE) return;
   try {
     const res = await api("film_marks?select=*");
-    if (!res.ok) throw new Error();
+    if (!res.ok) throw new Error(await errorText(res));
     for (const r of await res.json()) {
       if (pending[r.imdb_id]) continue;
       const editing = document.activeElement?.id === `note-${r.imdb_id}`;
@@ -270,7 +270,13 @@ async function pullMarks() {
     saveLocal();
     filter();
     setSync(`Liste commune synchronisée à ${new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}.`);
-  } catch { setSync("Impossible de récupérer la liste commune. Les données affichées sont celles de ce navigateur."); }
+  } catch (e) { setSync(`Impossible de récupérer la liste commune (${e instanceof TypeError || !e.message ? "pas de réponse de Supabase" : e.message}). Les données affichées sont celles de ce navigateur.`); }
+}
+
+async function errorText(res) {
+  let detail = "";
+  try { const j = await res.json(); detail = j.message || j.msg || j.error || ""; } catch {}
+  return `erreur ${res.status}${detail ? ` : ${detail}` : ""}`;
 }
 
 const fmtDate = iso => iso ? new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" }) : "";

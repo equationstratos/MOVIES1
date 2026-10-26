@@ -48,10 +48,34 @@
     padding: 8px 12px; font-size: 14px; outline: none;
   }
   .lock input:focus { border-color: var(--accent); }
-  .icon-btn:disabled { cursor: default; opacity: .75; }
-  .icon-btn:disabled:hover { border-color: var(--line); color: var(--muted); }
-  .icon-btn.eye[aria-pressed=true]:disabled:hover { color: var(--accent); border-color: var(--accent); }
-  .icon-btn.heart[aria-pressed=true]:disabled:hover { color: #ff5c7a; border-color: #ff5c7a; }
+  .icon-btn[aria-disabled=true] { cursor: help; opacity: .75; }
+  .icon-btn[aria-disabled=true]:hover { border-color: var(--line); color: var(--muted); }
+  .icon-btn.eye[aria-pressed=true][aria-disabled=true]:hover { color: var(--accent); border-color: var(--accent); }
+  .icon-btn.heart[aria-pressed=true][aria-disabled=true]:hover { color: #ff5c7a; border-color: #ff5c7a; }
+
+  .tip {
+    position: absolute; z-index: 20; max-width: min(260px, calc(100vw - 32px));
+    background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--accent); border-radius: 12px;
+    padding: 10px 12px; font-size: 13px; line-height: 1.4;
+    box-shadow: 0 12px 30px rgba(0,0,0,.5);
+    display: flex; flex-direction: column; gap: 8px; align-items: flex-start;
+  }
+  .tip[hidden] { display: none; }
+  .tip::before {
+    content: ""; position: absolute; top: -6px; left: var(--arrow, 24px);
+    width: 10px; height: 10px; background: var(--surface-2);
+    border-left: 1px solid var(--accent); border-top: 1px solid var(--accent);
+    transform: rotate(45deg);
+  }
+  .tip button {
+    background: var(--accent); color: #1a1408; border: 0; border-radius: 999px;
+    padding: 6px 12px; font-size: 12px; font-weight: 700; cursor: pointer;
+  }
+  .tip button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+  @keyframes flash { 0%, 100% { box-shadow: 0 0 0 0 rgba(232,176,74,0); } 30% { box-shadow: 0 0 0 4px rgba(232,176,74,.55); } }
+  .lock input.flash { animation: flash 1.2s ease 2; border-color: var(--accent); }
+  @media (prefers-reduced-motion: reduce) { .lock input.flash { animation: none; } }
   .note[readonly] { resize: none; min-height: 0; color: var(--muted); }
 
   .controls {
@@ -284,7 +308,7 @@ function applyLock() {
   lockForm.hidden = canEdit();
   unlockedEl.hidden = !canEdit();
   Object.values(cards).forEach(card => {
-    card.querySelectorAll(".icon-btn").forEach(b => { b.disabled = !canEdit(); b.title = canEdit() ? "" : "Entre le code en haut de la page pour modifier"; });
+    card.querySelectorAll(".icon-btn").forEach(b => b.setAttribute("aria-disabled", !canEdit()));
     card.querySelector(".note").readOnly = !canEdit();
     card.querySelector(".note").placeholder = canEdit() ? "Ton petit commentaire…" : "";
     renderMarks(card);
@@ -296,6 +320,40 @@ function lock() {
   store.del(CODE_STORE);
   applyLock();
 }
+
+// Bulle affichée quand on clique sur vu / aimé sans avoir déverrouillé
+const tip = document.createElement("div");
+tip.className = "tip";
+tip.setAttribute("role", "status");
+tip.hidden = true;
+tip.innerHTML = `<span>Mode lecture seule. Entre le code en haut de la page pour cocher vu et aimé.</span><button type="button">Entrer le code</button>`;
+document.body.appendChild(tip);
+let tipTimer;
+
+function showLockTip(btn) {
+  const r = btn.getBoundingClientRect();
+  tip.hidden = false;
+  const w = tip.offsetWidth;
+  const left = Math.max(16, Math.min(r.left + window.scrollX, window.scrollX + document.documentElement.clientWidth - w - 16));
+  tip.style.left = `${left}px`;
+  tip.style.top = `${r.bottom + window.scrollY + 10}px`;
+  tip.style.setProperty("--arrow", `${Math.max(12, r.left + window.scrollX + r.width / 2 - left - 5)}px`);
+  clearTimeout(tipTimer);
+  tipTimer = setTimeout(hideLockTip, 6000);
+}
+function hideLockTip() { tip.hidden = true; clearTimeout(tipTimer); }
+
+tip.querySelector("button").onclick = () => {
+  hideLockTip();
+  lockForm.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
+  codeInput.focus({ preventScroll: true });
+  codeInput.classList.remove("flash");
+  void codeInput.offsetWidth;
+  codeInput.classList.add("flash");
+};
+document.addEventListener("click", e => { if (!tip.hidden && !tip.contains(e.target) && !e.target.closest(".icon-btn")) hideLockTip(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") hideLockTip(); });
+window.addEventListener("resize", hideLockTip);
 
 async function pullMarks() {
   if (!REMOTE) return;
@@ -380,13 +438,15 @@ SECTIONS.forEach(sec => {
     const m = marks[imdb] || {};
     const note = card.querySelector(".note");
     note.value = m.note || "";
-    card.querySelector(".eye").onclick = () => {
+    card.querySelector(".eye").onclick = e => {
+      if (!canEdit()) return showLockTip(e.currentTarget);
       const mk = mark(imdb);
       mk.seen = !mk.seen;
       mk.seen_at = mk.seen ? new Date().toISOString() : null;
       saveMark(imdb); renderMarks(card); filter();
     };
-    card.querySelector(".heart").onclick = () => {
+    card.querySelector(".heart").onclick = e => {
+      if (!canEdit()) return showLockTip(e.currentTarget);
       const mk = mark(imdb);
       mk.liked = !mk.liked;
       mk.liked_at = mk.liked ? new Date().toISOString() : null;

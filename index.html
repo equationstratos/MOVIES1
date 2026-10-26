@@ -36,22 +36,7 @@
   .kicker { color: var(--accent); font-size: 12px; letter-spacing: .18em; text-transform: uppercase; font-weight: 600; }
   h1 { font-size: clamp(34px, 7vw, 60px); line-height: 1.02; letter-spacing: -.02em; margin: 10px 0 0; font-weight: 800; }
 
-  .keybar { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  .keybar input {
-    flex: 1 1 260px; min-width: 0;
-    background: var(--surface); color: var(--text);
-    border: 1px solid var(--line); border-radius: 10px;
-    padding: 9px 12px; font-size: 14px; outline: none;
-  }
-  .keybar input:focus { border-color: var(--accent); }
-  .keybar button, .chip {
-    background: var(--surface); color: var(--muted);
-    border: 1px solid var(--line); border-radius: 999px;
-    padding: 8px 14px; font-size: 13px; cursor: pointer; font-weight: 600;
-  }
-  .keybar button.primary { background: var(--accent); color: #1a1408; border-color: var(--accent); }
-  .keybar .hint { width: 100%; color: var(--muted); font-size: 13px; }
-  .keybar .hint a { color: var(--accent); }
+  .status { margin-top: 14px; color: var(--muted); font-size: 13px; }
 
   .controls {
     position: sticky; top: 0; z-index: 5;
@@ -117,12 +102,7 @@
   <div class="wrap">
     <div class="kicker">32 films · Classiques &amp; sagas</div>
     <h1>Films cultes</h1>
-    <form class="keybar" id="keyform">
-      <input id="key" type="password" autocomplete="off" placeholder="Clé API TMDB (v3) ou jeton d'accès (v4)" aria-label="Clé API TMDB">
-      <button class="primary" type="submit">Charger les affiches</button>
-      <button type="button" id="forget">Oublier la clé</button>
-      <p class="hint" id="hint">Les affiches viennent de TMDB. Colle ta clé gratuite (<a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener">themoviedb.org/settings/api</a>) : elle reste uniquement dans ce navigateur.</p>
-    </form>
+    <p class="status" id="hint">Chargement des affiches depuis TMDB…</p>
   </div>
 </header>
 
@@ -185,7 +165,8 @@ const SECTIONS = [
 ];
 
 const IMG = "https://image.tmdb.org/t/p/w500";
-const KEY_STORE = "tmdb-key";
+// Clé API TMDB (v3), en lecture seule
+const TMDB_KEY = "0645306d4f4efba1f28020f5700355c0";
 const CACHE_STORE = "tmdb-posters-v1";
 
 const store = {
@@ -202,7 +183,6 @@ const q = document.getElementById("q");
 const countEl = document.getElementById("count");
 const emptyEl = document.getElementById("empty");
 const hintEl = document.getElementById("hint");
-const keyInput = document.getElementById("key");
 let active = "all";
 
 const norm = s => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -283,27 +263,11 @@ async function loadPosters(key, force) {
     hintEl.textContent = missing ? `Affiches chargées (${missing} introuvable${missing > 1 ? "s" : ""} sur TMDB).` : "Affiches chargées depuis TMDB.";
   } catch (e) {
     store.set(CACHE_STORE, JSON.stringify(cache));
-    hintEl.textContent = e.message === "auth" ? "Clé TMDB refusée : vérifie-la et réessaie." : "Impossible de joindre TMDB pour le moment. Réessaie plus tard.";
+    hintEl.textContent = e.message === "auth" ? "TMDB a refusé la clé API : les affiches ne peuvent pas être chargées." : "Impossible de joindre TMDB pour le moment. Recharge la page plus tard.";
   }
 }
 
-document.getElementById("keyform").addEventListener("submit", e => {
-  e.preventDefault();
-  const key = keyInput.value.trim() || store.get(KEY_STORE);
-  if (!key) { keyInput.focus(); return; }
-  store.set(KEY_STORE, key);
-  keyInput.value = "";
-  keyInput.placeholder = "Clé enregistrée dans ce navigateur";
-  loadPosters(key, true);
-});
-document.getElementById("forget").onclick = () => {
-  store.del(KEY_STORE);
-  keyInput.placeholder = "Clé API TMDB (v3) ou jeton d'accès (v4)";
-  hintEl.textContent = "Clé supprimée. Les affiches déjà chargées restent en cache.";
-};
-
-const savedKey = store.get(KEY_STORE);
-if (savedKey) { keyInput.placeholder = "Clé enregistrée dans ce navigateur"; loadPosters(savedKey, false); }
+loadPosters(TMDB_KEY, false);
 
 const chipDefs = [{ id: "all", name: "Tous" }, { id: "s1", name: "Policier & drame" }, { id: "s2", name: "SF & dystopie" }, { id: "s3", name: "Action & guerre" }];
 chipDefs.forEach(c => {

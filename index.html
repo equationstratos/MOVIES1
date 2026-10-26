@@ -39,6 +39,20 @@
   .status { margin-top: 14px; color: var(--muted); font-size: 13px; }
   .status + .status { margin-top: 2px; }
   .dates { font-size: 12px; color: var(--muted); }
+  .lock { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); }
+  .lock[hidden] { display: none; }
+  .lock input {
+    flex: 0 1 260px; min-width: 0;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--line); border-radius: 10px;
+    padding: 8px 12px; font-size: 14px; outline: none;
+  }
+  .lock input:focus { border-color: var(--accent); }
+  .icon-btn:disabled { cursor: default; opacity: .75; }
+  .icon-btn:disabled:hover { border-color: var(--line); color: var(--muted); }
+  .icon-btn.eye[aria-pressed=true]:disabled:hover { color: var(--accent); border-color: var(--accent); }
+  .icon-btn.heart[aria-pressed=true]:disabled:hover { color: #ff5c7a; border-color: #ff5c7a; }
+  .note[readonly] { resize: none; min-height: 0; color: var(--muted); }
 
   .controls {
     position: sticky; top: 0; z-index: 5;
@@ -139,6 +153,14 @@
     <h1>Films cultes</h1>
     <p class="status" id="hint">Chargement des affiches depuis TMDB…</p>
     <p class="status" id="sync">Vus et coups de cœur enregistrés dans ce navigateur uniquement.</p>
+    <form class="lock" id="lock-form" hidden>
+      <input type="password" id="code" autocomplete="current-password" placeholder="Code pour cocher vu / aimé" aria-label="Code">
+      <button type="submit" class="chip">Déverrouiller</button>
+    </form>
+    <p class="lock" id="unlocked" hidden>
+      <span>Mode édition activé sur cet appareil.</span>
+      <button type="button" class="chip" id="lock-btn">Verrouiller</button>
+    </p>
   </div>
 </header>
 
@@ -232,6 +254,14 @@ const api = (path, opts = {}) => fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
   headers: { apikey: SUPABASE_ANON_KEY, ...(SUPABASE_ANON_KEY.startsWith("eyJ") ? { Authorization: `Bearer ${SUPABASE_ANON_KEY}` } : {}), "Content-Type": "application/json", ...opts.headers }
 });
 
+// Seule la personne qui connaît le code peut modifier la liste commune ; Supabase vérifie le code
+// (voir supabase-code.sql). Le code est retenu dans ce navigateur une fois validé.
+const CODE_STORE = "films-code";
+let editCode = REMOTE ? store.get(CODE_STORE) : null;
+const canEdit = () => !REMOTE || !!editCode;
+
+const setMark = (code, body = {}) => api("rpc/set_film_mark", { method: "POST", body: JSON.stringify({ p_code: code, ...body }) });
+
 const pending = {};
 function saveMark(id, delay = 0) {
   saveLocal();
@@ -241,15 +271,30 @@ function saveMark(id, delay = 0) {
     delete pending[id];
     const m = marks[id];
     try {
-      const res = await api("film_marks", {
-        method: "POST",
-        headers: { Prefer: "resolution=merge-duplicates" },
-        body: JSON.stringify([{ imdb_id: id, seen: m.seen, liked: m.liked, note: m.note, seen_at: m.seen_at, liked_at: m.liked_at, updated_at: new Date().toISOString() }])
-      });
+      const res = await setMark(editCode, { p_imdb_id: id, p_seen: m.seen, p_liked: m.liked, p_note: m.note });
+      if (res.status === 403) { lock(); setSync("Code refusé : la modification n’a pas été enregistrée. Entre le code pour continuer."); pullMarks(); return; }
       if (!res.ok) throw new Error(await errorText(res));
       setSync("Liste commune à jour.");
     } catch (e) { setSync(`Échec de l’enregistrement en ligne (${e instanceof TypeError || !e.message ? "pas de réponse de Supabase" : e.message}).`); }
   }, delay);
+}
+
+function applyLock() {
+  if (!REMOTE) return;
+  lockForm.hidden = canEdit();
+  unlockedEl.hidden = !canEdit();
+  Object.values(cards).forEach(card => {
+    card.querySelectorAll(".icon-btn").forEach(b => { b.disabled = !canEdit(); b.title = canEdit() ? "" : "Entre le code en haut de la page pour modifier"; });
+    card.querySelector(".note").readOnly = !canEdit();
+    card.querySelector(".note").placeholder = canEdit() ? "Ton petit commentaire…" : "";
+    renderMarks(card);
+  });
+}
+
+function lock() {
+  editCode = null;
+  store.del(CODE_STORE);
+  applyLock();
 }
 
 async function pullMarks() {
@@ -292,6 +337,9 @@ const countEl = document.getElementById("count");
 const emptyEl = document.getElementById("empty");
 const hintEl = document.getElementById("hint");
 const syncEl = document.getElementById("sync");
+const lockForm = document.getElementById("lock-form");
+const codeInput = document.getElementById("code");
+const unlockedEl = document.getElementById("unlocked");
 let active = "all";
 let statusFilter = "all";
 
@@ -362,7 +410,7 @@ function renderMarks(card) {
   heart.setAttribute("aria-pressed", !!m.liked);
   heart.querySelector("span").textContent = m.liked ? "Aimé" : "J’aime";
   card.querySelector(".seen-badge").hidden = !m.seen;
-  card.querySelector(".note").hidden = !m.liked;
+  card.querySelector(".note").hidden = !m.liked || (!canEdit() && !m.note);
   const dates = [m.seen && m.seen_at && `Vu le ${fmtDate(m.seen_at)}`, m.liked && m.liked_at && `Aimé le ${fmtDate(m.liked_at)}`].filter(Boolean);
   const datesEl = card.querySelector(".dates");
   datesEl.textContent = dates.join(" · ");
@@ -480,6 +528,25 @@ q.addEventListener("input", filter);
 filter();
 
 if (REMOTE) {
+  applyLock();
+  lockForm.addEventListener("submit", async e => {
+    e.preventDefault();
+    const code = codeInput.value;
+    if (!code) { codeInput.focus(); return; }
+    setSync("Vérification du code…");
+    try {
+      const res = await setMark(code);
+      if (res.status === 403) { setSync("Code incorrect."); codeInput.select(); return; }
+      if (!res.ok) throw new Error(await errorText(res));
+      editCode = code;
+      store.set(CODE_STORE, code);
+      codeInput.value = "";
+      applyLock();
+      setSync("Code accepté : tu peux cocher vu et aimé.");
+    } catch (err) { setSync(`Impossible de vérifier le code (${err instanceof TypeError || !err.message ? "pas de réponse de Supabase" : err.message}).`); }
+  });
+  document.getElementById("lock-btn").onclick = () => { lock(); setSync("Verrouillé : cet appareil ne peut plus modifier la liste."); };
+
   setSync("Synchronisation de la liste commune…");
   pullMarks();
   setInterval(() => { if (!document.hidden) pullMarks(); }, 30000);

@@ -1,6 +1,8 @@
 -- À exécuter dans Supabase : SQL Editor → New query → coller → Run.
 -- Crée la liste commune « vu / aimé / commentaire » des films.
 -- Le script peut être relancé sans risque : il ne supprime aucune donnée.
+-- Attention : il rouvre la modification à tous. Si tu protèges la liste par un code,
+-- relance supabase-code.sql juste après.
 
 create table if not exists public.film_marks (
   imdb_id    text primary key,

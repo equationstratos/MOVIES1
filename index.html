@@ -37,6 +37,8 @@
   h1 { font-size: clamp(34px, 7vw, 60px); line-height: 1.02; letter-spacing: -.02em; margin: 10px 0 0; font-weight: 800; }
 
   .status { margin-top: 14px; color: var(--muted); font-size: 13px; }
+  .status + .status { margin-top: 2px; }
+  .dates { font-size: 12px; color: var(--muted); }
 
   .controls {
     position: sticky; top: 0; z-index: 5;
@@ -136,6 +138,7 @@
     <div class="kicker">32 films · Classiques &amp; sagas</div>
     <h1>Films cultes</h1>
     <p class="status" id="hint">Chargement des affiches depuis TMDB…</p>
+    <p class="status" id="sync">Vus et coups de cœur enregistrés dans ce navigateur uniquement.</p>
   </div>
 </header>
 
@@ -211,12 +214,65 @@ const store = {
 let cache = {};
 try { cache = JSON.parse(store.get(CACHE_STORE) || "{}"); } catch { cache = {}; }
 
-// Vu / coup de cœur / commentaire, enregistrés dans ce navigateur
+// Liste commune vu / coup de cœur / commentaire, partagée via Supabase (voir supabase.sql).
+// Sans configuration, elle reste enregistrée dans ce navigateur seulement.
+const SUPABASE_URL = "";
+const SUPABASE_ANON_KEY = "";
+const REMOTE = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
+
 const MARKS_STORE = "films-avis-v1";
 let marks = {};
 try { marks = JSON.parse(store.get(MARKS_STORE) || "{}"); } catch { marks = {}; }
-const mark = id => marks[id] || (marks[id] = { seen: false, liked: false, note: "" });
-const saveMarks = () => store.set(MARKS_STORE, JSON.stringify(marks));
+const mark = id => marks[id] || (marks[id] = { seen: false, liked: false, note: "", seen_at: null, liked_at: null });
+const saveLocal = () => store.set(MARKS_STORE, JSON.stringify(marks));
+
+const api = (path, opts = {}) => fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+  ...opts,
+  headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json", ...opts.headers }
+});
+
+const pending = {};
+function saveMark(id, delay = 0) {
+  saveLocal();
+  if (!REMOTE) return;
+  clearTimeout(pending[id]);
+  pending[id] = setTimeout(async () => {
+    delete pending[id];
+    const m = marks[id];
+    try {
+      const res = await api("film_marks", {
+        method: "POST",
+        headers: { Prefer: "resolution=merge-duplicates" },
+        body: JSON.stringify([{ imdb_id: id, seen: m.seen, liked: m.liked, note: m.note, seen_at: m.seen_at, liked_at: m.liked_at, updated_at: new Date().toISOString() }])
+      });
+      if (!res.ok) throw new Error();
+      setSync("Liste commune à jour.");
+    } catch { setSync("Échec de l’enregistrement en ligne. Vérifie ta connexion puis réessaie."); }
+  }, delay);
+}
+
+async function pullMarks() {
+  if (!REMOTE) return;
+  try {
+    const res = await api("film_marks?select=*");
+    if (!res.ok) throw new Error();
+    for (const r of await res.json()) {
+      if (pending[r.imdb_id]) continue;
+      const editing = document.activeElement?.id === `note-${r.imdb_id}`;
+      marks[r.imdb_id] = { seen: r.seen, liked: r.liked, note: editing ? mark(r.imdb_id).note : r.note, seen_at: r.seen_at, liked_at: r.liked_at };
+      const card = cards[r.imdb_id];
+      if (card) {
+        if (!editing) card.querySelector(".note").value = r.note;
+        renderMarks(card);
+      }
+    }
+    saveLocal();
+    filter();
+    setSync(`Liste commune synchronisée à ${new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}.`);
+  } catch { setSync("Impossible de récupérer la liste commune. Les données affichées sont celles de ce navigateur."); }
+}
+
+const fmtDate = iso => iso ? new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" }) : "";
 
 const EYE = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>`;
 const HEART = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7.5-4.6-9.5-9.3C1.1 8.4 3.2 4.5 7 4.5c2.1 0 3.6 1.2 5 3 1.4-1.8 2.9-3 5-3 3.8 0 5.9 3.9 4.5 7.2C19.5 16.4 12 21 12 21z"/></svg>`;
@@ -228,6 +284,7 @@ const q = document.getElementById("q");
 const countEl = document.getElementById("count");
 const emptyEl = document.getElementById("empty");
 const hintEl = document.getElementById("hint");
+const syncEl = document.getElementById("sync");
 let active = "all";
 let statusFilter = "all";
 
@@ -262,19 +319,26 @@ SECTIONS.forEach(sec => {
         <button type="button" class="icon-btn eye">${EYE}<span></span></button>
         <button type="button" class="icon-btn heart">${HEART}<span></span></button>
       </div>
+      <p class="dates" hidden></p>
       <textarea class="note" id="note-${imdb}" rows="2" maxlength="280" placeholder="Ton petit commentaire…" aria-label="Commentaire sur ${esc(title)}" hidden></textarea>
       <p class="synopsis">${esc(syn)}</p>`;
     const m = marks[imdb] || {};
     const note = card.querySelector(".note");
     note.value = m.note || "";
-    card.querySelector(".eye").onclick = () => { mark(imdb).seen = !mark(imdb).seen; saveMarks(); renderMarks(card); filter(); };
+    card.querySelector(".eye").onclick = () => {
+      const mk = mark(imdb);
+      mk.seen = !mk.seen;
+      mk.seen_at = mk.seen ? new Date().toISOString() : null;
+      saveMark(imdb); renderMarks(card); filter();
+    };
     card.querySelector(".heart").onclick = () => {
       const mk = mark(imdb);
       mk.liked = !mk.liked;
-      saveMarks(); renderMarks(card); filter();
+      mk.liked_at = mk.liked ? new Date().toISOString() : null;
+      saveMark(imdb); renderMarks(card); filter();
       if (mk.liked) note.focus();
     };
-    note.addEventListener("input", () => { mark(imdb).note = note.value; saveMarks(); });
+    note.addEventListener("input", () => { mark(imdb).note = note.value; saveMark(imdb, 800); });
     renderMarks(card);
     grid.appendChild(card);
     cards[imdb] = card;
@@ -292,7 +356,13 @@ function renderMarks(card) {
   heart.querySelector("span").textContent = m.liked ? "Aimé" : "J’aime";
   card.querySelector(".seen-badge").hidden = !m.seen;
   card.querySelector(".note").hidden = !m.liked;
+  const dates = [m.seen && m.seen_at && `Vu le ${fmtDate(m.seen_at)}`, m.liked && m.liked_at && `Aimé le ${fmtDate(m.liked_at)}`].filter(Boolean);
+  const datesEl = card.querySelector(".dates");
+  datesEl.textContent = dates.join(" · ");
+  datesEl.hidden = !dates.length;
 }
+
+function setSync(text) { syncEl.textContent = text; }
 
 function applyPoster(imdb, info) {
   const card = cards[imdb];
@@ -401,6 +471,13 @@ function filter() {
 }
 q.addEventListener("input", filter);
 filter();
+
+if (REMOTE) {
+  setSync("Synchronisation de la liste commune…");
+  pullMarks();
+  setInterval(() => { if (!document.hidden) pullMarks(); }, 30000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) pullMarks(); });
+}
 </script>
 </body>
 </html>

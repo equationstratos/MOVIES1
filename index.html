@@ -54,6 +54,12 @@
   }
   input[type=search]:focus { border-color: var(--accent); }
   .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip {
+    background: var(--surface); color: var(--muted);
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 7px 12px; font-size: 13px; cursor: pointer; font-weight: 600;
+  }
+  .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .chip[aria-pressed=true] { background: var(--accent); color: #1a1408; border-color: var(--accent); }
   .count { color: var(--muted); font-size: 13px; width: 100%; }
 
@@ -68,14 +74,15 @@
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 18px; }
   @media (max-width: 420px) { .grid { grid-template-columns: repeat(2, 1fr); gap: 12px; } }
 
-  .card { display: flex; flex-direction: column; gap: 8px; text-decoration: none; }
+  .card { display: flex; flex-direction: column; gap: 8px; }
+  .card .link { display: flex; flex-direction: column; gap: 8px; text-decoration: none; }
   .poster {
     position: relative; aspect-ratio: 2 / 3; border-radius: 12px; overflow: hidden;
     border: 1px solid var(--line);
     transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease;
     display: flex; flex-direction: column; justify-content: space-between; padding: 12px;
   }
-  .card:hover .poster { transform: translateY(-3px); border-color: var(--accent); box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+  .card .link:hover .poster { transform: translateY(-3px); border-color: var(--accent); box-shadow: 0 10px 30px rgba(0,0,0,.45); }
   .poster.s1 { background: linear-gradient(160deg, var(--c1a), var(--c1b)); }
   .poster.s2 { background: linear-gradient(160deg, var(--c2a), var(--c2b)); }
   .poster.s3 { background: linear-gradient(160deg, var(--c3a), var(--c3b)); }
@@ -86,6 +93,32 @@
     opacity: 0; transition: opacity .3s ease;
   }
   .poster img.loaded { opacity: 1; }
+  .poster .seen-badge {
+    position: absolute; top: 8px; right: 8px; z-index: 1;
+    background: rgba(13,14,18,.85); color: var(--accent);
+    font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+    padding: 3px 8px; border-radius: 999px;
+  }
+  .actions { display: flex; gap: 6px; }
+  .icon-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: var(--surface); color: var(--muted);
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 5px 10px; font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+  .icon-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .icon-btn:hover { border-color: #3a3e4d; color: var(--text); }
+  .icon-btn:focus-visible, .note:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .icon-btn.eye[aria-pressed=true] { color: var(--accent); border-color: var(--accent); }
+  .icon-btn.heart[aria-pressed=true] { color: #ff5c7a; border-color: #ff5c7a; }
+  .icon-btn.heart[aria-pressed=true] svg { fill: currentColor; }
+  .note {
+    width: 100%; resize: vertical; min-height: 56px;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--line); border-radius: 10px;
+    padding: 8px 10px; font: inherit; font-size: 13px; outline: none;
+  }
+  .note:focus { border-color: #ff5c7a; }
   .card h3 { font-size: 15px; line-height: 1.25; font-weight: 700; }
   .meta { font-size: 12px; color: var(--muted); }
   .meta b { color: var(--accent); font-weight: 600; }
@@ -110,12 +143,13 @@
   <div class="wrap">
     <input type="search" id="q" placeholder="Rechercher un film, une année, un genre…" aria-label="Rechercher">
     <div class="chips" id="chips"></div>
+    <div class="chips" id="status-chips"></div>
     <div class="count" id="count"></div>
   </div>
 </div>
 
 <main class="wrap" id="main"></main>
-<p class="empty wrap" id="empty">Aucun film ne correspond à ta recherche.</p>
+<p class="empty wrap" id="empty">Aucun film ne correspond à ta recherche ou à ton filtre.</p>
 
 <footer class="wrap">
   <p>« Blade Runner 2045 » a été interprété comme Blade Runner 2049. Pour Mad Max, la sélection comprend Fury Road et Furiosa.</p>
@@ -177,13 +211,25 @@ const store = {
 let cache = {};
 try { cache = JSON.parse(store.get(CACHE_STORE) || "{}"); } catch { cache = {}; }
 
+// Vu / coup de cœur / commentaire, enregistrés dans ce navigateur
+const MARKS_STORE = "films-avis-v1";
+let marks = {};
+try { marks = JSON.parse(store.get(MARKS_STORE) || "{}"); } catch { marks = {}; }
+const mark = id => marks[id] || (marks[id] = { seen: false, liked: false, note: "" });
+const saveMarks = () => store.set(MARKS_STORE, JSON.stringify(marks));
+
+const EYE = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>`;
+const HEART = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7.5-4.6-9.5-9.3C1.1 8.4 3.2 4.5 7 4.5c2.1 0 3.6 1.2 5 3 1.4-1.8 2.9-3 5-3 3.8 0 5.9 3.9 4.5 7.2C19.5 16.4 12 21 12 21z"/></svg>`;
+
 const main = document.getElementById("main");
 const chipsEl = document.getElementById("chips");
+const statusChipsEl = document.getElementById("status-chips");
 const q = document.getElementById("q");
 const countEl = document.getElementById("count");
 const emptyEl = document.getElementById("empty");
 const hintEl = document.getElementById("hint");
 let active = "all";
+let statusFilter = "all";
 
 const norm = s => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -196,22 +242,40 @@ SECTIONS.forEach(sec => {
   el.innerHTML = `<h2>${esc(sec.name)}</h2><div class="grid"></div>`;
   const grid = el.querySelector(".grid");
   sec.films.forEach(([title, year, tags, syn, imdb]) => {
-    const card = document.createElement("a");
+    const card = document.createElement("article");
     card.className = "card";
-    card.href = `https://www.imdb.com/title/${imdb}/`;
-    card.target = "_blank";
-    card.rel = "noopener";
+    card.dataset.id = imdb;
     card.dataset.search = norm(`${title} ${year} ${tags} ${syn}`);
     card.innerHTML = `
-      <div class="poster ${sec.id}">
-        <span class="ph-title">${esc(title)}</span>
-        <span class="ph-year">${year}</span>
+      <a class="link" href="https://www.imdb.com/title/${imdb}/" target="_blank" rel="noopener">
+        <div class="poster ${sec.id}">
+          <span class="ph-title">${esc(title)}</span>
+          <span class="ph-year">${year}</span>
+          <span class="seen-badge" hidden>Vu</span>
+        </div>
+        <div>
+          <h3>${esc(title)}</h3>
+          <div class="meta"><b>${year}</b> · ${esc(tags)}</div>
+        </div>
+      </a>
+      <div class="actions">
+        <button type="button" class="icon-btn eye">${EYE}<span></span></button>
+        <button type="button" class="icon-btn heart">${HEART}<span></span></button>
       </div>
-      <div>
-        <h3>${esc(title)}</h3>
-        <div class="meta"><b>${year}</b> · ${esc(tags)}</div>
-      </div>
+      <textarea class="note" id="note-${imdb}" rows="2" maxlength="280" placeholder="Ton petit commentaire…" aria-label="Commentaire sur ${esc(title)}" hidden></textarea>
       <p class="synopsis">${esc(syn)}</p>`;
+    const m = marks[imdb] || {};
+    const note = card.querySelector(".note");
+    note.value = m.note || "";
+    card.querySelector(".eye").onclick = () => { mark(imdb).seen = !mark(imdb).seen; saveMarks(); renderMarks(card); filter(); };
+    card.querySelector(".heart").onclick = () => {
+      const mk = mark(imdb);
+      mk.liked = !mk.liked;
+      saveMarks(); renderMarks(card); filter();
+      if (mk.liked) note.focus();
+    };
+    note.addEventListener("input", () => { mark(imdb).note = note.value; saveMarks(); });
+    renderMarks(card);
     grid.appendChild(card);
     cards[imdb] = card;
     if (cache[imdb]) applyPoster(imdb, cache[imdb]);
@@ -219,10 +283,21 @@ SECTIONS.forEach(sec => {
   main.appendChild(el);
 });
 
+function renderMarks(card) {
+  const m = marks[card.dataset.id] || {};
+  const eye = card.querySelector(".eye"), heart = card.querySelector(".heart");
+  eye.setAttribute("aria-pressed", !!m.seen);
+  eye.querySelector("span").textContent = m.seen ? "Vu" : "Pas vu";
+  heart.setAttribute("aria-pressed", !!m.liked);
+  heart.querySelector("span").textContent = m.liked ? "Aimé" : "J’aime";
+  card.querySelector(".seen-badge").hidden = !m.seen;
+  card.querySelector(".note").hidden = !m.liked;
+}
+
 function applyPoster(imdb, info) {
   const card = cards[imdb];
   if (!card || !info) return;
-  if (info.id) card.href = `https://www.themoviedb.org/movie/${info.id}`;
+  if (info.id) card.querySelector(".link").href = `https://www.themoviedb.org/movie/${info.id}`;
   if (!info.poster) return;
   const box = card.querySelector(".poster");
   let img = box.querySelector("img");
@@ -283,6 +358,28 @@ chipDefs.forEach(c => {
   chipsEl.appendChild(b);
 });
 
+const statusDefs = [{ id: "all", name: "Tous les films" }, { id: "seen", name: "Vus" }, { id: "unseen", name: "Pas vus" }, { id: "liked", name: "Coups de cœur" }];
+statusDefs.forEach(c => {
+  const b = document.createElement("button");
+  b.className = "chip";
+  b.textContent = c.name;
+  b.setAttribute("aria-pressed", c.id === statusFilter);
+  b.onclick = () => {
+    statusFilter = c.id;
+    statusChipsEl.querySelectorAll(".chip").forEach(x => x.setAttribute("aria-pressed", x === b));
+    filter();
+  };
+  statusChipsEl.appendChild(b);
+});
+
+function statusOk(id) {
+  const m = marks[id] || {};
+  if (statusFilter === "seen") return !!m.seen;
+  if (statusFilter === "unseen") return !m.seen;
+  if (statusFilter === "liked") return !!m.liked;
+  return true;
+}
+
 function filter() {
   const term = norm(q.value.trim());
   let shown = 0;
@@ -290,14 +387,16 @@ function filter() {
     const secOk = active === "all" || sec.dataset.sec === active;
     let inSec = 0;
     sec.querySelectorAll(".card").forEach(card => {
-      const ok = secOk && (!term || card.dataset.search.includes(term));
+      const ok = secOk && statusOk(card.dataset.id) && (!term || card.dataset.search.includes(term));
       card.style.display = ok ? "" : "none";
       if (ok) inSec++;
     });
     sec.style.display = inSec ? "" : "none";
     shown += inSec;
   });
-  countEl.textContent = `${shown} film${shown > 1 ? "s" : ""} affiché${shown > 1 ? "s" : ""}`;
+  const seenCount = Object.values(marks).filter(m => m.seen).length;
+  const likedCount = Object.values(marks).filter(m => m.liked).length;
+  countEl.textContent = `${shown} film${shown > 1 ? "s" : ""} affiché${shown > 1 ? "s" : ""} · ${seenCount}/32 vus · ${likedCount} coup${likedCount > 1 ? "s" : ""} de cœur`;
   emptyEl.style.display = shown ? "none" : "block";
 }
 q.addEventListener("input", filter);
